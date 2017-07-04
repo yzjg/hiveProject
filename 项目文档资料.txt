@@ -1,0 +1,144 @@
+########################新建mysql表
+CREATE TABLE `product_info` (
+  `product_id` int(11) NOT NULL DEFAULT '0',
+  `product_name` varchar(255) DEFAULT NULL,
+`extend_info` varchar(255) DEFAULT NULL,
+  PRIMARY KEY (`product_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+
+
+CREATE TABLE `city` (
+  `city_id` int(11) NOT NULL ,
+  `city_name` varchar(255) DEFAULT NULL,
+`area_name` varchar(255) DEFAULT NULL,
+  PRIMARY KEY (`city_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+
+INSERT INTO city(city_name,area_name)VALUES("北京","华北");
+INSERT INTO city(city_name,area_name)VALUES("天津","华北");
+INSERT INTO city(city_name,area_name)VALUES("辽宁","东北");
+INSERT INTO city(city_name,area_name)VALUES("吉林","东北");
+INSERT INTO city(city_name,area_name)VALUES("上海","华东");
+INSERT INTO city(city_name,area_name)VALUES("江苏","华东");
+INSERT INTO city(city_name,area_name)VALUES("河南","中南");
+INSERT INTO city(city_name,area_name)VALUES("湖北","中南");
+INSERT INTO city(city_name,area_name)VALUES("陕西","西北");
+INSERT INTO city(city_name,area_name)VALUES("新疆","西北");
+
+##################################新建HIVE表
+
+user_id   session_id   access_time  city_id  product_id 
+
+CREATE TABLE IF NOET EXISTS user_click(
+  user_id int,
+  session_id string,
+  access_time timestamp,
+  city_id int,
+  product_id int
+)PARTITIONED BY(dt)
+ROW FORMAT DELIMITED FIELDS TERMINATED BY '\t' 
+
+LOAD DATA LOCAL INPATH '/root/study/user_click.txt' OVERWRITE INTO TABLE user_click PARTITION(dt='') 
+
+###################################udf函数
+
+
+##########################################三张表关联
+select product_id,product_name,click_count,
+  case when click_count>30 then '非常好' when click_count>20 and click_count<30 then '好' else '一般' end level ,
+  area_name,status,access_date
+from 
+(select 
+   product_id,
+   product_name, 
+   click_count,
+   status,
+   area_name ,
+   access_date,
+   row_number() over(partition by area_name order by click_count desc)rank
+from 
+(select 
+ p.product_id,
+ product_name, 
+ count(p.product_id) click_count,
+ parse_status(extend_info) status,
+ c.area_name ,
+ to_date(access_time) access_date
+from product_info p join
+(select city_id,product_id,access_time from user_click where dt='2017-01-09')uc
+on p.product_id = uc.product_id 
+left join city c on c.city_id = uc.city_id 
+group by  p.product_id,product_name, parse_status(extend_info),area_name , to_date(access_time))a
+) temp 
+where temp.rank <=3;
+
+######################################把上面结果保存pro_top_area里########## 
+CREATE TABLE IF NOT EXISTS pro_top_area(
+  product_id int,
+  product_name string,
+  click_count int,
+  level string,
+  area_name string,
+  status string,
+  access_date string
+)PARTITIONED BY(dt string)
+ROW FORMAT DELIMITED FIELDS TERMINATED BY '\t' 
+
+
+
+insert overwrite table pro_top_area partition(dt='2017-01-09')  
+select 
+  product_id,
+  product_name,
+  click_count,
+  case when click_count>30 then '非常好' when click_count>20 and click_count<30 then '好' else '一般' end level ,
+  area_name,
+  status,
+  access_date
+from 
+(select 
+   product_id,
+   product_name, 
+   click_count,
+   status,
+   area_name ,
+   access_date,
+   row_number() over(partition by area_name order by click_count desc)rank
+from 
+(select 
+ p.product_id,
+ product_name, 
+ count(p.product_id) click_count,
+ parse_status(extend_info) status,
+ c.area_name ,
+ to_date(access_time) access_date
+from product_info p join
+(select city_id,product_id,access_time from user_click where dt='2017-01-09')uc
+on p.product_id = uc.product_id 
+left join city c on c.city_id = uc.city_id 
+group by  p.product_id,product_name, parse_status(extend_info),area_name , to_date(access_time))a
+) temp 
+where temp.rank <=3;
+######################################把数据导出到mysql#####
+CREATE TABLE `pro_top_area` (
+  `product_id` int(11) NOT NULL,
+  `product_name` varchar(255) DEFAULT NULL,
+  `click_count` int(11) DEFAULT 0,
+  `status` varchar(255) DEFAULT NULL,
+  `level` varchar(255) DEFAULT NULL,
+  `area_name` varchar(255) DEFAULT NULL,
+  `access_date` varchar(255) DEFAULT NULL
+) ENGINE=InnoDB  DEFAULT CHARSET=utf8;
+
+###############################################
+
+
+
+
+
+
+
+
+
+
+
